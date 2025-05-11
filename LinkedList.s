@@ -4,9 +4,12 @@ tail: .word 0                # Puntatore alla coda della lista
 nodes_pool: .zero 150       # Spazio per 30 nodi (5 byte ciascuno)
 next_free: .word nodes_pool   # Puntatore al prossimo nodo libero
 
-listInput: .asciz "ADD(z)~ADD(d)~ADD(B)~ADD(0)~PRINT~REV~PRINT~REV~PRINT"  # Input di esempio
-error_msg: .asciz "Comando malformato ignorato\n"
-newline: .asciz "\n"
+
+listInput: .asciz "ADD(1) ~ ADD(a) ~ add(B) ~ ADD(B) ~ ADD ~ ADD(9) ~PRINT~SORT(a)~PRINT~DEL(bb) ~DEL(B) ~PRINT~REV~PRINT"  # Input di esempio
+
+#esempio input1:ADD(1) ~ ADD(a) ~ ADD(a) ~ ADD(B) ~ ADD(;) ~ ADD(9) ~SORT~PRINT~DEL(b) ~DEL(B) ~PRI~REV~PRINT
+#esempio input2:ADD(1) ~ ADD(a) ~ add(B) ~ ADD(B) ~ ADD ~ ADD(9) ~PRINT~SORT(a)~PRINT~DEL(bb) ~DEL(B) ~PRINT~REV~PRINT
+
 
 .text
 
@@ -42,7 +45,7 @@ process_commands:
     beq t0, s7, read_sort
     beq t0, s8, read_print
     beq t0, s9, read_rev
-    ret
+    j process_commands
 
     
     
@@ -51,29 +54,30 @@ read_add:
     li t2, 68 #D
 
     lb t0, 0(a0)
-    addi a0, a0, 1
     bne t0, t2, lettura_fallita #se non D
+    addi a0, a0, 1
+    
     
     lb t0, 0(a0)
-    addi a0, a0, 1
     bne t0, t2, lettura_fallita #se non D
+    addi a0, a0, 1
+    
     
     lb t0, 0(a0)
-    addi a0, a0, 1
     bne t0, s2, lettura_fallita #se non parentesi aperta
+    addi a0, a0, 1
+    
     
     lb t0, 0(a0)
-    addi a0, a0, 1
     blt t0, s0, lettura_fallita # se < 32
     bgt t0, s1, lettura_fallita #se > 125
+    addi a0, a0, 1
     
     mv a1, t0         #a1 contiene il carattere da aggiungere
     
     lb t0, 0(a0)
-    addi a0, a0, 1
     bne t0, s3, lettura_fallita #se non parentesi chiusa
-    
-   
+    addi a0, a0, 1
     
     j conferma_add    #se tutto va bene
 
@@ -131,7 +135,147 @@ add_done:
     j process_commands
     
 read_del:
-    ret
+    li t1, 69 #E
+    li t2, 76 #L
+
+    lb t0, 0(a0)
+    bne t0, t1, lettura_fallita #se non E
+    addi a0, a0, 1
+    
+    lb t0, 0(a0)
+    bne t0, t2, lettura_fallita #se non L
+    addi a0, a0, 1
+    
+    
+    lb t0, 0(a0)
+    bne t0, s2, lettura_fallita #se non parentesi aperta
+    addi a0, a0, 1
+    
+    
+    lb t0, 0(a0)
+    blt t0, s0, lettura_fallita # se < 32
+    bgt t0, s1, lettura_fallita #se > 125
+    addi a0, a0, 1
+    
+    mv a1, t0         #a1 contiene il carattere target da eliminare
+    
+    lb t0, 0(a0)
+    bne t0, s3, lettura_fallita #se non parentesi chiusa
+    addi a0, a0, 1
+    
+    j conferma_del    #se tutto va bene
+
+    
+conferma_del:
+    lb t0, 0(a0)    #t0 carattere attuale
+    
+    beq t0, s4, esegui_del # se ~ add valido
+    beq t0, zero, esegui_del #se fine stringa add valido
+    beq t0, s0, skip_conferma_del # se spazio skip
+    j lettura_fallita #altrimenti lettura fallita
+    
+skip_conferma_del:
+    addi a0, a0, 1
+    j conferma_del
+    
+# Funzione DEL - Rimozione elemento dalla lista
+# Input: a1 = carattere da eliminare (in formato ASCII)
+#        a2 = puntatore alla testa (head)
+#        a3 = puntatore alla coda (tail)
+# Output: a2 = nuova testa, a3 = nuova coda
+esegui_del:
+    addi sp, sp, -20        # Alloca spazio sullo stack
+    sw ra, 0(sp)            # Salva registri
+    sw s0, 4(sp)           # current node
+    sw s1, 8(sp)           # previous node
+    sw s2, 12(sp)          # char to delete
+    sw s3, 16(sp)          # flag modifiche
+
+    mv s2, a1              # Salva carattere da eliminare
+    li s3, 0               # Inizializza flag modifiche = false
+
+    # Caso speciale: lista vuota
+    lb t0, 0(a2)
+    beqz t0, del_done
+
+    # Gestione eliminazione nodi in testa
+del_head_loop:
+    lb t0, 0(a2)           # Carica carattere del nodo head
+    bne t0, s2, del_main    # Se diverso, procedi
+    
+    # Altrimenti Elimina nodo head
+    lw t1, 1(a2)            # Salva next node
+    mv a2, t1               # Aggiorna head
+    li s3, 1                # Segnala modifica
+    
+    lb t0, 0(t1)
+    beqz t1, update_tail    # Se lista ora vuota
+    j del_head_loop         # Controlla nuovo head
+
+del_main:
+    mv s0, a2               # current = head
+    mv s1, zero             # previous = NULL
+
+del_loop:
+    lb t0, 0(s0)
+    beqz t0, del_check_tail # Se fine lista
+    
+    lb t0, 0(s0)            # Carica carattere corrente
+    lw t1, 1(s0)            # Salva next node
+    
+    bne t0, s2, del_next    # Se non ¨¨ il carattere da eliminare
+    
+    sw t1, 1(s1)            # previous->next = current->next
+    li s3, 1                # Segnala modifica
+    
+    # Se eliminiamo la coda, aggiorniamo tail
+    beqz t1, update_tail_from_prev
+    mv s0, t1               # current = current->next
+    j del_loop
+
+del_next:
+    mv s1, s0               # previous = current
+    mv s0, t1               # current = current->next
+    j del_loop
+
+update_tail_from_prev:
+    mv a3, s1               # La nuova coda ¨¨ il previous
+    j del_check_tail
+    
+del_check_tail:
+    beqz s3, del_done      # Se non ci sono modifiche, salta alla fine
+    lb t0, 0(a2)
+    beqz a2, set_null_tail # Se head == NULL, imposta tail = NULL
+    j update_tail          # Altrimenti, trova la nuova coda
+
+update_tail:
+    # Trova nuova coda (se necessario)
+    lb t0, 0(a2)
+    beqz a2, set_null_tail  # Se lista vuota
+    
+    mv s0, a2               # Parti dalla testa
+find_tail_del:
+    lw t0, 1(s0)            # Carica next
+    beqz t0, found_tail     # Se next == NULL, trovato tail
+    mv s0, t0
+    j find_tail_del
+
+found_tail:
+    mv a3, s0               # Aggiorna tail
+    j del_done
+
+set_null_tail:
+    mv a3, zero             # tail = NULL
+
+del_done:
+    lw ra, 0(sp)            # Ripristina registri
+    lw s0, 4(sp)
+    lw s1, 8(sp)
+    lw s2, 12(sp)
+    lw s3, 16(sp)
+    addi sp, sp, 20
+    addi a0, a0, 1
+    j process_commands
     
 read_sort:
     li t1, 79 #O
@@ -139,17 +283,18 @@ read_sort:
     li t3, 84 #T
 
     lb t0, 0(a0)
-    addi a0, a0, 1
     bne t0, t1, lettura_fallita #se non O
+    addi a0, a0, 1
     
     lb t0, 0(a0)
-    addi a0, a0, 1
     bne t0, t2, lettura_fallita #se non R
+    addi a0, a0, 1
+    
     
     lb t0, 0(a0)
-    addi a0, a0, 1
     bne t0, t3, lettura_fallita #se non T
-        
+    addi a0, a0, 1
+    
     j conferma_sort    #se tutto va bene
     
 conferma_sort:
@@ -236,7 +381,7 @@ find_tail:
     
 tail_loop:
     lw t5, 1(a0)            # Prossimo nodo
-    beqz t5, tail_done      # Se ¨¨ l'ultimo
+    beqz t5, tail_done      # Se ?? l'ultimo
     mv a0, t5               # Altrimenti avanza
     j tail_loop
     
@@ -267,7 +412,7 @@ not_lower1:
     j extra1
     
 upper1:
-    li t1, 3    # Categoria pi¨´ alta
+    li t1, 3    # Categoria pi?? alta
     j cat2
 lower1:
     li t1, 2
@@ -340,20 +485,24 @@ read_print:
     li t4, 84 #T
 
     lb t0, 0(a0)
-    addi a0, a0, 1
     bne t0, t1, lettura_fallita #se non R
+    addi a0, a0, 1
+    
     
     lb t0, 0(a0)
-    addi a0, a0, 1
     bne t0, t2, lettura_fallita #se non I
+    addi a0, a0, 1
+    
     
     lb t0, 0(a0)
-    addi a0, a0, 1
     bne t0, t3, lettura_fallita #se non N
+    addi a0, a0, 1
+    
     
     lb t0, 0(a0)
-    addi a0, a0, 1
     bne t0, t4, lettura_fallita #se non T
+    addi a0, a0, 1
+    
         
     j conferma_print    #se tutto va bene
     
@@ -415,12 +564,14 @@ read_rev:
     li t2, 86 #V
 
     lb t0, 0(a0)
-    addi a0, a0, 1
     bne t0, t1, lettura_fallita #se non E
+    addi a0, a0, 1
+
     
     lb t0, 0(a0)
-    addi a0, a0, 1
     bne t0, t2, lettura_fallita #se non V
+    addi a0, a0, 1
+    
         
     j conferma_rev    #se tutto va bene
     
@@ -446,7 +597,7 @@ esegui_rev:
     # Caso base: lista vuota o con un solo elemento
     lw t0, 0(a2)
     beqz t0, rev_done               # Se head == NULL, finisci
-    lw t0, 1(a2)                    # Controlla se c'¨¨ solo un elemento
+    lw t0, 1(a2)                    # Controlla se c'?? solo un elemento
     beqz t0, rev_done               # Se head->next == NULL, finisci
     
     # Inizializza i puntatori
@@ -464,7 +615,7 @@ rev_loop:
     mv s0, s1                      # prev = curr
     mv s1, s2                      # curr = next
     
-    # Continua finch¨¦ curr != NULL
+    # Continua finch?? curr != NULL
     bnez s1, rev_loop
     
     # Aggiorna head e tail
@@ -486,7 +637,7 @@ lettura_fallita:
     lb t0, 0(a0)    #t0 carattere attuale
     addi a0, a0, 1
     beq t0, s4, process_commands # se ~ prossimo comando
-    beq t0, zero, end_main #se fine stringa add valido
+    beq t0, zero, end_main #se fine stringa fine programma
     j search_tilde
     
     
