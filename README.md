@@ -22,3 +22,5 @@ Ogni elemento della lista occupa 5 byte:
 - L’ordinamento ASCII considera la seguente precedenza: **maiuscole > minuscole > numeri > simboli**.
 - L'implementazione privilegia la **modularità**, ogni operazione è realizzata come procedura separata.
 
+Vedi traccia..
+[ProgettoAE_aa_24-25_v1.pdf](https://github.com/user-attachments/files/21442335/ProgettoAE_aa_24-25_v1.pdf)
